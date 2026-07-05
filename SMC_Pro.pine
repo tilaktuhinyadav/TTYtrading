@@ -1,0 +1,16 @@
+//@version=6
+indicator("SMC Pro", overlay=true)
+
+// Initial scaffold
+// This file will be expanded iteratively with:
+// - Market Structure
+// - BOS / CHoCH
+// - Fair Value Gaps
+// - Order Blocks
+// - Liquidity
+// - Premium/Discount
+// - Multi-timeframe
+// - Dashboard
+// - Alerts
+
+plot(close, title="Close")
