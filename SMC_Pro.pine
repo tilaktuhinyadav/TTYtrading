@@ -22,6 +22,7 @@ const string GROUP_SIGNALS = "Smart Signals"
 const string GROUP_STYLE = "Colors"
 
 bool showSwings = input.bool(true, "Show Swings", group=GROUP_GENERAL)
+bool showLiveStructure = input.bool(true, "Show Live Structure Levels", group=GROUP_GENERAL)
 bool showBos = input.bool(true, "Enable BOS", group=GROUP_GENERAL)
 bool showChoch = input.bool(true, "Enable CHoCH", group=GROUP_GENERAL)
 bool showFvg = input.bool(true, "Enable FVG", group=GROUP_GENERAL)
@@ -87,6 +88,7 @@ color obBearColor = input.color(color.rgb(198, 40, 40), "Bearish OB", group=GROU
 float sensitivityFactor = sensitivity == "Conservative" ? 1.35 : sensitivity == "Aggressive" ? 0.70 : 1.00
 int pivotLen = sensitivity == "Aggressive" ? math.max(2, pivotLenInput - 1) : sensitivity == "Conservative" ? pivotLenInput + 1 : pivotLenInput
 float atr = ta.atr(atrLen)
+float volumeMa = ta.sma(volume, volumeMaLen)
 float minTickGap = minGapTicks * syminfo.mintick
 float breakBuffer = useBosAtrFilter ? atr * bosAtrMultInput * sensitivityFactor : 0.0
 float fvgAtrMult = fvgAtrMultInput * sensitivityFactor
@@ -94,47 +96,42 @@ float equalToleranceAtr = equalToleranceAtrInput * (sensitivity == "Aggressive" 
 float breakHighSource = breakMode == "Close" ? close : high
 float breakLowSource = breakMode == "Close" ? close : low
 
-// Converts internal trend state into dashboard text.
+f_htfTrend() =>
+    float ma = ta.sma(close, htfTrendLen)
+    close > ma ? TREND_BULL : close < ma ? TREND_BEAR : TREND_NEUTRAL
+
 f_trendText(int trendValue) =>
     trendValue == TREND_BULL ? "Bullish" : trendValue == TREND_BEAR ? "Bearish" : "Neutral"
 
-// Converts internal trend state into the configured trend color.
 f_trendColor(int trendValue) =>
     trendValue == TREND_BULL ? bullColor : trendValue == TREND_BEAR ? bearColor : neutralColor
 
-// Checks whether an event happened within a configurable lookback window.
 f_recent(bool condition, int bars) =>
     int since = ta.barssince(condition)
     not na(since) and since <= bars
 
-// Returns true when the current bar belongs to the supplied exchange-time session.
 f_inSession(string sess) =>
     not na(time(timeframe.period, sess))
 
-// Returns the currently active trading session label for the dashboard.
 f_sessionName() =>
     f_inSession(asianSession) ? "Asian" : f_inSession(londonSession) ? "London" : f_inSession(nySession) ? "New York" : "Off"
 
-// Deletes the oldest boxes once a feature exceeds its configured active-object cap.
 f_trimBoxes(array<box> boxes, array<int> dirs, int maxCount) =>
     while array.size(boxes) > maxCount
         box oldBox = array.shift(boxes)
         int oldDir = array.shift(dirs)
         box.delete(oldBox)
 
-// Deletes the oldest lines once a feature exceeds its configured active-object cap.
 f_trimLines(array<line> lines, int maxCount) =>
     while array.size(lines) > maxCount
         line oldLine = array.shift(lines)
         line.delete(oldLine)
 
-// Deletes the oldest labels once a feature exceeds its configured active-object cap.
 f_trimLabels(array<label> labels, int maxCount) =>
     while array.size(labels) > maxCount
         label oldLabel = array.shift(labels)
         label.delete(oldLabel)
 
-// Counts active directional objects for dashboard and signal confluence.
 f_countDir(array<int> dirs, int dir) =>
     int count = 0
     if array.size(dirs) > 0
@@ -142,7 +139,6 @@ f_countDir(array<int> dirs, int dir) =>
             count += array.get(dirs, i) == dir ? 1 : 0
     count
 
-// Builds a compact trade label with entry, stop, targets, and risk/reward values.
 f_signalText(string side, float entry, float stop, float risk, float mult1, float mult2, float mult3) =>
     float tp1 = side == "BUY" ? entry + risk * mult1 : entry - risk * mult1
     float tp2 = side == "BUY" ? entry + risk * mult2 : entry - risk * mult2
@@ -160,6 +156,8 @@ var array<line> liquidityLines = array.new_line()
 var array<line> structureLines = array.new_line()
 var array<label> eventLabels = array.new_label()
 var line eqLine = na
+var line liveHighLine = na
+var line liveLowLine = na
 var box premiumBox = na
 var box discountBox = na
 var box oteBox = na
@@ -202,6 +200,23 @@ if newSwingLow
         label lb = label.new(pivotIndex, pl, lastLowType, xloc=xloc.bar_index, style=label.style_label_up, textcolor=color.white, color=color.new(bullColor, 15), size=size.tiny)
         array.push(eventLabels, lb)
         f_trimLabels(eventLabels, maxEventLabels)
+
+if showLiveStructure and not na(lastSwingHigh)
+    if na(liveHighLine)
+        liveHighLine := line.new(lastSwingHighIndex, lastSwingHigh, bar_index + 25, lastSwingHigh, xloc=xloc.bar_index, color=color.new(bearColor, 15), style=line.style_dashed, width=1)
+    else
+        line.set_xy1(liveHighLine, lastSwingHighIndex, lastSwingHigh)
+        line.set_xy2(liveHighLine, bar_index + 25, lastSwingHigh)
+
+if showLiveStructure and not na(lastSwingLow)
+    if na(liveLowLine)
+        liveLowLine := line.new(lastSwingLowIndex, lastSwingLow, bar_index + 25, lastSwingLow, xloc=xloc.bar_index, color=color.new(bullColor, 15), style=line.style_dashed, width=1)
+    else
+        line.set_xy1(liveLowLine, lastSwingLowIndex, lastSwingLow)
+        line.set_xy2(liveLowLine, bar_index + 25, lastSwingLow)
+
+plotshape(showSwings and newSwingHigh ? ph : na, title="Confirmed Swing High Marker", style=shape.triangledown, location=location.absolute, offset=-pivotLen, color=bearColor, size=size.tiny, text="SH")
+plotshape(showSwings and newSwingLow ? pl : na, title="Confirmed Swing Low Marker", style=shape.triangleup, location=location.absolute, offset=-pivotLen, color=bullColor, size=size.tiny, text="SL")
 
 //=============================================================================
 // 5. Market Structure Engine
@@ -427,15 +442,22 @@ if validRange
 //=============================================================================
 // 12. Multi-Timeframe Engine
 //=============================================================================
-int htfTrend = showMtf ? request.security(syminfo.tickerid, htf, close > ta.sma(close, htfTrendLen) ? TREND_BULL : close < ta.sma(close, htfTrendLen) ? TREND_BEAR : TREND_NEUTRAL, barmerge.gaps_off, barmerge.lookahead_off) : trend
-bool htfBullBos = showMtf ? request.security(syminfo.tickerid, htf, close > ta.highest(high, pivotLen * 4)[1], barmerge.gaps_off, barmerge.lookahead_off) : bullishBOS
-bool htfBearBos = showMtf ? request.security(syminfo.tickerid, htf, close < ta.lowest(low, pivotLen * 4)[1], barmerge.gaps_off, barmerge.lookahead_off) : bearishBOS
-bool htfBullFvg = showMtf ? request.security(syminfo.tickerid, htf, low > high[2], barmerge.gaps_off, barmerge.lookahead_off) : bullishFvgCreated
-bool htfBearFvg = showMtf ? request.security(syminfo.tickerid, htf, high < low[2], barmerge.gaps_off, barmerge.lookahead_off) : bearishFvgCreated
+int htfTrendRaw = request.security(syminfo.tickerid, htf, f_htfTrend(), barmerge.gaps_off, barmerge.lookahead_off)
+bool htfBullBosRaw = request.security(syminfo.tickerid, htf, close > ta.highest(high, pivotLen * 4)[1], barmerge.gaps_off, barmerge.lookahead_off)
+bool htfBearBosRaw = request.security(syminfo.tickerid, htf, close < ta.lowest(low, pivotLen * 4)[1], barmerge.gaps_off, barmerge.lookahead_off)
+bool htfBullFvgRaw = request.security(syminfo.tickerid, htf, low > high[2], barmerge.gaps_off, barmerge.lookahead_off)
+bool htfBearFvgRaw = request.security(syminfo.tickerid, htf, high < low[2], barmerge.gaps_off, barmerge.lookahead_off)
+bool htfBullObRaw = request.security(syminfo.tickerid, htf, close[1] < open[1], barmerge.gaps_off, barmerge.lookahead_off)
+bool htfBearObRaw = request.security(syminfo.tickerid, htf, close[1] > open[1], barmerge.gaps_off, barmerge.lookahead_off)
+int htfTrend = showMtf ? htfTrendRaw : trend
+bool htfBullBos = showMtf ? htfBullBosRaw : bullishBOS
+bool htfBearBos = showMtf ? htfBearBosRaw : bearishBOS
+bool htfBullFvg = showMtf ? htfBullFvgRaw : bullishFvgCreated
+bool htfBearFvg = showMtf ? htfBearFvgRaw : bearishFvgCreated
 bool htfBullChoch = showMtf and htfTrend == TREND_BULL and htfTrend[1] == TREND_BEAR
 bool htfBearChoch = showMtf and htfTrend == TREND_BEAR and htfTrend[1] == TREND_BULL
-bool htfBullOb = htfBullBos and request.security(syminfo.tickerid, htf, close[1] < open[1], barmerge.gaps_off, barmerge.lookahead_off)
-bool htfBearOb = htfBearBos and request.security(syminfo.tickerid, htf, close[1] > open[1], barmerge.gaps_off, barmerge.lookahead_off)
+bool htfBullOb = htfBullBos and htfBullObRaw
+bool htfBearOb = htfBearBos and htfBearObRaw
 string htfEvent = htfBullChoch ? "Bull CHoCH" : htfBearChoch ? "Bear CHoCH" : htfBullBos ? "Bull BOS" : htfBearBos ? "Bear BOS" : htfBullFvg ? "Bull FVG" : htfBearFvg ? "Bear FVG" : htfBullOb ? "Bull OB" : htfBearOb ? "Bear OB" : "None"
 
 //=============================================================================
@@ -473,9 +495,15 @@ if showDashboard and barstate.islast
 //=============================================================================
 // 14. Smart Signal Engine
 //=============================================================================
-bool volumeOk = not requireVolumeConfirm or volume > ta.sma(volume, volumeMaLen)
-bool buyConfluence = showSignals and htfTrend == TREND_BULL and f_recent(bullishBOS, recentBars) and f_recent(bullishCHoCH, recentBars) and inDiscount and activeBullFvgs > 0 and activeBullObs > 0 and f_recent(sellSideSweep, recentBars) and volumeOk
-bool sellConfluence = showSignals and htfTrend == TREND_BEAR and f_recent(bearishBOS, recentBars) and f_recent(bearishCHoCH, recentBars) and inPremium and activeBearFvgs > 0 and activeBearObs > 0 and f_recent(buySideSweep, recentBars) and volumeOk
+bool recentBullBos = f_recent(bullishBOS, recentBars)
+bool recentBearBos = f_recent(bearishBOS, recentBars)
+bool recentBullChoch = f_recent(bullishCHoCH, recentBars)
+bool recentBearChoch = f_recent(bearishCHoCH, recentBars)
+bool recentSellSweep = f_recent(sellSideSweep, recentBars)
+bool recentBuySweep = f_recent(buySideSweep, recentBars)
+bool volumeOk = not requireVolumeConfirm or volume > volumeMa
+bool buyConfluence = showSignals and htfTrend == TREND_BULL and recentBullBos and recentBullChoch and inDiscount and activeBullFvgs > 0 and activeBullObs > 0 and recentSellSweep and volumeOk
+bool sellConfluence = showSignals and htfTrend == TREND_BEAR and recentBearBos and recentBearChoch and inPremium and activeBearFvgs > 0 and activeBearObs > 0 and recentBuySweep and volumeOk
 bool buySignal = buyConfluence and (bar_index == 0 or not buyConfluence[1])
 bool sellSignal = sellConfluence and (bar_index == 0 or not sellConfluence[1])
 
