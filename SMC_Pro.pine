@@ -119,7 +119,7 @@ f_sessionName() =>
 f_trimBoxes(array<box> boxes, array<int> dirs, int maxCount) =>
     while array.size(boxes) > maxCount
         box oldBox = array.shift(boxes)
-        int oldDir = array.shift(dirs)
+        array.shift(dirs)
         box.delete(oldBox)
 
 f_trimLines(array<line> lines, int maxCount) =>
@@ -334,9 +334,10 @@ if bearishFvgCreated
     f_trimBoxes(fvgBoxes, fvgDirs, maxFvgs)
 
 if array.size(fvgBoxes) > 0
-    for i = array.size(fvgBoxes) - 1 to 0 by -1
-        box b = array.get(fvgBoxes, i)
-        int dir = array.get(fvgDirs, i)
+    int fvgIndex = array.size(fvgBoxes) - 1
+    while fvgIndex >= 0
+        box b = array.get(fvgBoxes, fvgIndex)
+        int dir = array.get(fvgDirs, fvgIndex)
         box.set_right(b, bar_index + fvgExtendBars)
         float top = box.get_top(b)
         float bottom = box.get_bottom(b)
@@ -348,11 +349,12 @@ if array.size(fvgBoxes) > 0
             fvgFilled := true
             if deleteFilledFvg
                 box.delete(b)
-                array.remove(fvgBoxes, i)
-                array.remove(fvgDirs, i)
+                array.remove(fvgBoxes, fvgIndex)
+                array.remove(fvgDirs, fvgIndex)
             else
                 box.set_bgcolor(b, color.new(neutralColor, 92))
                 box.set_border_color(b, color.new(neutralColor, 60))
+        fvgIndex -= 1
 
 //=============================================================================
 // 10. Order Block Engine
@@ -388,9 +390,10 @@ if showOb and bearishBOS and not na(lastBullIndex)
     f_trimBoxes(obBoxes, obDirs, maxObs)
 
 if array.size(obBoxes) > 0
-    for i = array.size(obBoxes) - 1 to 0 by -1
-        box b = array.get(obBoxes, i)
-        int dir = array.get(obDirs, i)
+    int obIndex = array.size(obBoxes) - 1
+    while obIndex >= 0
+        box b = array.get(obBoxes, obIndex)
+        int dir = array.get(obDirs, obIndex)
         box.set_right(b, bar_index + obExtendBars)
         float top = box.get_top(b)
         float bottom = box.get_bottom(b)
@@ -405,8 +408,9 @@ if array.size(obBoxes) > 0
                 array.push(eventLabels, lb)
                 f_trimLabels(eventLabels, maxEventLabels)
             box.delete(b)
-            array.remove(obBoxes, i)
-            array.remove(obDirs, i)
+            array.remove(obBoxes, obIndex)
+            array.remove(obDirs, obIndex)
+        obIndex -= 1
 
 //=============================================================================
 // 11. Premium / Discount Engine
