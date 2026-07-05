@@ -1,5 +1,5 @@
 //@version=6
-indicator("SMC Pro", shorttitle="SMC Pro", overlay=true, max_boxes_count=300, max_lines_count=300, max_labels_count=300)
+indicator("SMC Pro", shorttitle="SMC Pro", overlay=true, max_boxes_count=500, max_lines_count=500, max_labels_count=500)
 
 //=============================================================================
 // 1. Constants & Inputs
@@ -41,6 +41,8 @@ bool useBosAtrFilter = input.bool(true, "Use ATR Break Filter", group=GROUP_STRU
 float bosAtrMultInput = input.float(0.10, "BOS ATR Multiplier", minval=0.0, step=0.05, group=GROUP_STRUCTURE)
 int atrLen = input.int(14, "ATR Length", minval=1, group=GROUP_STRUCTURE)
 int recentBars = input.int(20, "Recent Event Window", minval=1, maxval=200, group=GROUP_STRUCTURE)
+int maxEventLabels = input.int(120, "Maximum Event Labels", minval=20, maxval=450, group=GROUP_STRUCTURE)
+int maxStructureLines = input.int(120, "Maximum Structure Lines", minval=20, maxval=450, group=GROUP_STRUCTURE)
 
 bool useFvgAtrFilter = input.bool(true, "Use ATR Gap Filter", group=GROUP_FVG)
 float fvgAtrMultInput = input.float(0.15, "FVG ATR Multiplier", minval=0.0, step=0.05, group=GROUP_FVG)
@@ -117,7 +119,7 @@ f_sessionName() =>
 f_trimBoxes(array<box> boxes, array<int> dirs, int maxCount) =>
     while array.size(boxes) > maxCount
         box oldBox = array.shift(boxes)
-        array.shift(dirs)
+        int oldDir = array.shift(dirs)
         box.delete(oldBox)
 
 // Deletes the oldest lines once a feature exceeds its configured active-object cap.
@@ -125,6 +127,12 @@ f_trimLines(array<line> lines, int maxCount) =>
     while array.size(lines) > maxCount
         line oldLine = array.shift(lines)
         line.delete(oldLine)
+
+// Deletes the oldest labels once a feature exceeds its configured active-object cap.
+f_trimLabels(array<label> labels, int maxCount) =>
+    while array.size(labels) > maxCount
+        label oldLabel = array.shift(labels)
+        label.delete(oldLabel)
 
 // Counts active directional objects for dashboard and signal confluence.
 f_countDir(array<int> dirs, int dir) =>
@@ -149,6 +157,8 @@ var array<int> fvgDirs = array.new_int()
 var array<box> obBoxes = array.new_box()
 var array<int> obDirs = array.new_int()
 var array<line> liquidityLines = array.new_line()
+var array<line> structureLines = array.new_line()
+var array<label> eventLabels = array.new_label()
 var line eqLine = na
 var box premiumBox = na
 var box discountBox = na
@@ -179,7 +189,9 @@ if newSwingHigh
     lastSwingHighIndex := pivotIndex
     lastHighType := na(prevSwingHigh) ? "SH" : ph > prevSwingHigh ? "HH" : "LH"
     if showSwings
-        label.new(pivotIndex, ph, lastHighType, xloc=xloc.bar_index, style=label.style_label_down, textcolor=color.white, color=color.new(bearColor, 15), size=size.tiny)
+        label lb = label.new(pivotIndex, ph, lastHighType, xloc=xloc.bar_index, style=label.style_label_down, textcolor=color.white, color=color.new(bearColor, 15), size=size.tiny)
+        array.push(eventLabels, lb)
+        f_trimLabels(eventLabels, maxEventLabels)
 
 if newSwingLow
     prevSwingLow := lastSwingLow
@@ -187,7 +199,9 @@ if newSwingLow
     lastSwingLowIndex := pivotIndex
     lastLowType := na(prevSwingLow) ? "SL" : pl > prevSwingLow ? "HL" : "LL"
     if showSwings
-        label.new(pivotIndex, pl, lastLowType, xloc=xloc.bar_index, style=label.style_label_up, textcolor=color.white, color=color.new(bullColor, 15), size=size.tiny)
+        label lb = label.new(pivotIndex, pl, lastLowType, xloc=xloc.bar_index, style=label.style_label_up, textcolor=color.white, color=color.new(bullColor, 15), size=size.tiny)
+        array.push(eventLabels, lb)
+        f_trimLabels(eventLabels, maxEventLabels)
 
 //=============================================================================
 // 5. Market Structure Engine
@@ -213,14 +227,22 @@ bool bearishBOS = bearBosCandidate and (na(lastBearBosLevel) or lastBearBosLevel
 if bullishBOS
     lastBullBosLevel := lastSwingHigh
     lastStructureEvent := "Bullish BOS"
-    line.new(lastSwingHighIndex, lastSwingHigh, bar_index, lastSwingHigh, xloc=xloc.bar_index, color=bullColor, width=2)
-    label.new(bar_index, lastSwingHigh, "BOS", style=label.style_label_down, textcolor=color.white, color=color.new(bullColor, 0), size=size.small)
+    line ln = line.new(lastSwingHighIndex, lastSwingHigh, bar_index, lastSwingHigh, xloc=xloc.bar_index, color=bullColor, width=2)
+    label lb = label.new(bar_index, lastSwingHigh, "BOS", style=label.style_label_down, textcolor=color.white, color=color.new(bullColor, 0), size=size.small)
+    array.push(structureLines, ln)
+    array.push(eventLabels, lb)
+    f_trimLines(structureLines, maxStructureLines)
+    f_trimLabels(eventLabels, maxEventLabels)
 
 if bearishBOS
     lastBearBosLevel := lastSwingLow
     lastStructureEvent := "Bearish BOS"
-    line.new(lastSwingLowIndex, lastSwingLow, bar_index, lastSwingLow, xloc=xloc.bar_index, color=bearColor, width=2)
-    label.new(bar_index, lastSwingLow, "BOS", style=label.style_label_up, textcolor=color.white, color=color.new(bearColor, 0), size=size.small)
+    line ln = line.new(lastSwingLowIndex, lastSwingLow, bar_index, lastSwingLow, xloc=xloc.bar_index, color=bearColor, width=2)
+    label lb = label.new(bar_index, lastSwingLow, "BOS", style=label.style_label_up, textcolor=color.white, color=color.new(bearColor, 0), size=size.small)
+    array.push(structureLines, ln)
+    array.push(eventLabels, lb)
+    f_trimLines(structureLines, maxStructureLines)
+    f_trimLabels(eventLabels, maxEventLabels)
 
 //=============================================================================
 // 7. CHoCH Engine
@@ -230,11 +252,15 @@ bool bearishCHoCH = showChoch and bearishBOS and trend == TREND_BULL
 
 if bullishCHoCH
     lastStructureEvent := "Bullish CHoCH"
-    label.new(bar_index, low, "CHoCH", style=label.style_label_up, textcolor=color.white, color=color.new(bullColor, 0), size=size.small)
+    label lb = label.new(bar_index, low, "CHoCH", style=label.style_label_up, textcolor=color.white, color=color.new(bullColor, 0), size=size.small)
+    array.push(eventLabels, lb)
+    f_trimLabels(eventLabels, maxEventLabels)
 
 if bearishCHoCH
     lastStructureEvent := "Bearish CHoCH"
-    label.new(bar_index, high, "CHoCH", style=label.style_label_down, textcolor=color.white, color=color.new(bearColor, 0), size=size.small)
+    label lb = label.new(bar_index, high, "CHoCH", style=label.style_label_down, textcolor=color.white, color=color.new(bearColor, 0), size=size.small)
+    array.push(eventLabels, lb)
+    f_trimLabels(eventLabels, maxEventLabels)
 
 if bullishBOS
     trend := TREND_BULL
@@ -263,10 +289,14 @@ if equalLow
     f_trimLines(liquidityLines, maxLiquidityLines)
 
 if buySideSweep
-    label.new(bar_index, high, "BSL Sweep", style=label.style_label_down, textcolor=color.white, color=color.new(bearColor, 0), size=size.tiny)
+    label lb = label.new(bar_index, high, "BSL Sweep", style=label.style_label_down, textcolor=color.white, color=color.new(bearColor, 0), size=size.tiny)
+    array.push(eventLabels, lb)
+    f_trimLabels(eventLabels, maxEventLabels)
 
 if sellSideSweep
-    label.new(bar_index, low, "SSL Sweep", style=label.style_label_up, textcolor=color.white, color=color.new(bullColor, 0), size=size.tiny)
+    label lb = label.new(bar_index, low, "SSL Sweep", style=label.style_label_up, textcolor=color.white, color=color.new(bullColor, 0), size=size.tiny)
+    array.push(eventLabels, lb)
+    f_trimLabels(eventLabels, maxEventLabels)
 
 //=============================================================================
 // 9. Fair Value Gap Engine
@@ -356,7 +386,9 @@ if array.size(obBoxes) > 0
             box.set_bgcolor(b, color.new(dir == DIR_BULL ? obBullColor : obBearColor, 90))
         if invalid and removeInvalidOb
             if showBreakerBlocks
-                label.new(bar_index, dir == DIR_BULL ? bottom : top, "Breaker", style=dir == DIR_BULL ? label.style_label_down : label.style_label_up, textcolor=color.white, color=color.new(neutralColor, 0), size=size.tiny)
+                label lb = label.new(bar_index, dir == DIR_BULL ? bottom : top, "Breaker", style=dir == DIR_BULL ? label.style_label_down : label.style_label_up, textcolor=color.white, color=color.new(neutralColor, 0), size=size.tiny)
+                array.push(eventLabels, lb)
+                f_trimLabels(eventLabels, maxEventLabels)
             box.delete(b)
             array.remove(obBoxes, i)
             array.remove(obDirs, i)
@@ -442,8 +474,8 @@ if showDashboard and barstate.islast
 // 14. Smart Signal Engine
 //=============================================================================
 bool volumeOk = not requireVolumeConfirm or volume > ta.sma(volume, volumeMaLen)
-bool buyConfluence = showSignals and htfTrend == TREND_BULL and f_recent(bullishBOS or bullishCHoCH, recentBars) and inDiscount and activeBullFvgs > 0 and activeBullObs > 0 and f_recent(sellSideSweep, recentBars) and volumeOk
-bool sellConfluence = showSignals and htfTrend == TREND_BEAR and f_recent(bearishBOS or bearishCHoCH, recentBars) and inPremium and activeBearFvgs > 0 and activeBearObs > 0 and f_recent(buySideSweep, recentBars) and volumeOk
+bool buyConfluence = showSignals and htfTrend == TREND_BULL and f_recent(bullishBOS, recentBars) and f_recent(bullishCHoCH, recentBars) and inDiscount and activeBullFvgs > 0 and activeBullObs > 0 and f_recent(sellSideSweep, recentBars) and volumeOk
+bool sellConfluence = showSignals and htfTrend == TREND_BEAR and f_recent(bearishBOS, recentBars) and f_recent(bearishCHoCH, recentBars) and inPremium and activeBearFvgs > 0 and activeBearObs > 0 and f_recent(buySideSweep, recentBars) and volumeOk
 bool buySignal = buyConfluence and (bar_index == 0 or not buyConfluence[1])
 bool sellSignal = sellConfluence and (bar_index == 0 or not sellConfluence[1])
 
@@ -455,10 +487,14 @@ float sellStop = validRange ? rangeHigh : close + atr
 float sellRisk = math.max(sellStop - sellEntry, syminfo.mintick)
 
 if buySignal
-    label.new(bar_index, low, f_signalText("BUY", buyEntry, buyStop, buyRisk, rr1, rr2, rr3), style=label.style_label_up, color=color.new(bullColor, 0), textcolor=color.white, size=size.normal)
+    label lb = label.new(bar_index, low, f_signalText("BUY", buyEntry, buyStop, buyRisk, rr1, rr2, rr3), style=label.style_label_up, color=color.new(bullColor, 0), textcolor=color.white, size=size.normal)
+    array.push(eventLabels, lb)
+    f_trimLabels(eventLabels, maxEventLabels)
 
 if sellSignal
-    label.new(bar_index, high, f_signalText("SELL", sellEntry, sellStop, sellRisk, rr1, rr2, rr3), style=label.style_label_down, color=color.new(bearColor, 0), textcolor=color.white, size=size.normal)
+    label lb = label.new(bar_index, high, f_signalText("SELL", sellEntry, sellStop, sellRisk, rr1, rr2, rr3), style=label.style_label_down, color=color.new(bearColor, 0), textcolor=color.white, size=size.normal)
+    array.push(eventLabels, lb)
+    f_trimLabels(eventLabels, maxEventLabels)
 
 plotshape(buySignal, title="BUY Signal", style=shape.triangleup, location=location.belowbar, color=bullColor, size=size.small, text="BUY")
 plotshape(sellSignal, title="SELL Signal", style=shape.triangledown, location=location.abovebar, color=bearColor, size=size.small, text="SELL")
