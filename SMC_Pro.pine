@@ -10,16 +10,16 @@ const int TREND_NEUTRAL = 0
 const int DIR_BULL = 1
 const int DIR_BEAR = -1
 
-string groupGeneral = "General"
-string groupStructure = "Market Structure"
-string groupFvg = "Fair Value Gaps"
-string groupOb = "Order Blocks"
-string groupLiq = "Liquidity"
-string groupPd = "Premium / Discount"
-string groupMtf = "Multi-Timeframe"
-string groupSessions = "Sessions"
-string groupSignals = "Smart Signals"
-string groupStyle = "Colors"
+const string groupGeneral = "General"
+const string groupStructure = "Market Structure"
+const string groupFvg = "Fair Value Gaps"
+const string groupOb = "Order Blocks"
+const string groupLiq = "Liquidity"
+const string groupPd = "Premium / Discount"
+const string groupMtf = "Multi-Timeframe"
+const string groupSessions = "Sessions"
+const string groupSignals = "Smart Signals"
+const string groupStyle = "Colors"
 
 bool showSwings = input.bool(true, "Show Swings", group=groupGeneral)
 bool showBos = input.bool(true, "Enable BOS", group=groupGeneral)
@@ -54,12 +54,10 @@ bool showBreakerBlocks = input.bool(true, "Mark Breaker Blocks", group=groupOb)
 
 float equalToleranceAtr = input.float(0.10, "Equal High/Low Tolerance ATR", minval=0.0, step=0.05, group=groupLiq)
 int liquidityExtendBars = input.int(80, "Liquidity Line Extend Bars", minval=5, maxval=500, group=groupLiq)
-
 int pdExtendBars = input.int(120, "Zone Extend Bars", minval=10, maxval=500, group=groupPd)
 
 string htf = input.timeframe("240", "Higher Timeframe", group=groupMtf)
 int htfTrendLen = input.int(50, "HTF Trend MA Length", minval=2, group=groupMtf)
-
 string asianSession = input.session("0000-0600", "Asian Session", group=groupSessions)
 string londonSession = input.session("0700-1000", "London Kill Zone", group=groupSessions)
 string nySession = input.session("1230-1600", "New York Kill Zone", group=groupSessions)
@@ -87,11 +85,11 @@ float breakBuffer = useBosAtrFilter ? atr * bosAtrMult : 0.0
 float breakHighSource = breakMode == "Close" ? close : high
 float breakLowSource = breakMode == "Close" ? close : low
 
-string f_trendText(int trend) =>
-    trend == TREND_BULL ? "Bullish" : trend == TREND_BEAR ? "Bearish" : "Neutral"
+string f_trendText(int trendValue) =>
+    trendValue == TREND_BULL ? "Bullish" : trendValue == TREND_BEAR ? "Bearish" : "Neutral"
 
-color f_trendColor(int trend) =>
-    trend == TREND_BULL ? bullColor : trend == TREND_BEAR ? bearColor : neutralColor
+color f_trendColor(int trendValue) =>
+    trendValue == TREND_BULL ? bullColor : trendValue == TREND_BEAR ? bearColor : neutralColor
 
 bool f_recent(bool condition, int bars) =>
     int since = ta.barssince(condition)
@@ -103,18 +101,18 @@ bool f_inSession(string sess) =>
 string f_sessionName() =>
     f_inSession(asianSession) ? "Asian" : f_inSession(londonSession) ? "London" : f_inSession(nySession) ? "New York" : "Off"
 
-void f_trimBoxes(box[] boxes, int[] dirs, int maxCount) =>
+f_trimBoxes(array<box> boxes, array<int> dirs, int maxCount) =>
     while array.size(boxes) > maxCount
         box oldBox = array.shift(boxes)
         array.shift(dirs)
         box.delete(oldBox)
 
-void f_trimLines(line[] lines, int maxCount) =>
+f_trimLines(array<line> lines, int maxCount) =>
     while array.size(lines) > maxCount
         line oldLine = array.shift(lines)
         line.delete(oldLine)
 
-int f_countDir(int[] dirs, int dir) =>
+int f_countDir(array<int> dirs, int dir) =>
     int count = 0
     if array.size(dirs) > 0
         for i = 0 to array.size(dirs) - 1
@@ -124,11 +122,11 @@ int f_countDir(int[] dirs, int dir) =>
 //=============================================================================
 // 3. Drawing Manager State
 //=============================================================================
-var box[] fvgBoxes = array.new_box()
-var int[] fvgDirs = array.new_int()
-var box[] obBoxes = array.new_box()
-var int[] obDirs = array.new_int()
-var line[] liquidityLines = array.new_line()
+var array<box> fvgBoxes = array.new_box()
+var array<int> fvgDirs = array.new_int()
+var array<box> obBoxes = array.new_box()
+var array<int> obDirs = array.new_int()
+var array<line> liquidityLines = array.new_line()
 var line eqLine = na
 var box premiumBox = na
 var box discountBox = na
@@ -291,24 +289,20 @@ if array.size(fvgBoxes) > 0
 //=============================================================================
 // 10. Order Block Engine
 //=============================================================================
-var float lastBearOpen = na
 var float lastBearHigh = na
 var float lastBearLow = na
 var int lastBearIndex = na
-var float lastBullOpen = na
 var float lastBullHigh = na
 var float lastBullLow = na
 var int lastBullIndex = na
 bool obTouched = false
 
 if close < open
-    lastBearOpen := open
     lastBearHigh := high
     lastBearLow := low
     lastBearIndex := bar_index
 
 if close > open
-    lastBullOpen := open
     lastBullHigh := high
     lastBullLow := low
     lastBullIndex := bar_index
@@ -355,7 +349,6 @@ float oteTop = validRange ? rangeHigh - (rangeHigh - rangeLow) * 0.62 : na
 float oteBottom = validRange ? rangeHigh - (rangeHigh - rangeLow) * 0.79 : na
 bool inDiscount = validRange and close <= eq
 bool inPremium = validRange and close >= eq
-bool inOte = validRange and close <= oteTop and close >= oteBottom
 
 if validRange
     int left = math.max(0, bar_index - pdExtendBars)
@@ -420,8 +413,8 @@ if showDashboard and barstate.islast
 bool volumeOk = not requireVolumeConfirm or volume > ta.sma(volume, volumeMaLen)
 bool buyConfluence = showSignals and htfTrend == TREND_BULL and f_recent(bullishBOS, recentBars) and f_recent(bullishCHoCH, recentBars) and inDiscount and activeBullFvgs > 0 and activeBullObs > 0 and f_recent(sellSideSweep, recentBars) and volumeOk
 bool sellConfluence = showSignals and htfTrend == TREND_BEAR and f_recent(bearishBOS, recentBars) and f_recent(bearishCHoCH, recentBars) and inPremium and activeBearFvgs > 0 and activeBearObs > 0 and f_recent(buySideSweep, recentBars) and volumeOk
-bool buySignal = buyConfluence and not buyConfluence[1]
-bool sellSignal = sellConfluence and not sellConfluence[1]
+bool buySignal = buyConfluence and not nz(buyConfluence[1], false)
+bool sellSignal = sellConfluence and not nz(sellConfluence[1], false)
 
 float buyEntry = close
 float buyStop = validRange ? rangeLow : close - atr
